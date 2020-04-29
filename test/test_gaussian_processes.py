@@ -116,5 +116,44 @@ class TestCustomGP(unittest.TestCase):
 
         self.assertAllClose(y,predictions.mean.numpy())
 
+class TestMaternKernelGP(unittest.TestCase):
+    def test_initialization(self):
+        train_input = np.linspace(0,1,101)
+        train_target = np.sin(2*np.pi*train_input) + np.random.randn(len(train_input))*0.2
+
+        gp = gps.MaternKernelGP(train_input,
+                            train_target,
+                            likelihood_prior=(1,0.5),
+                            likelihood_noise_constraint=(1e-3,1e4),
+                            lengthscale_prior=(2,1),
+                            lengthscale_constraint=(2,4),
+                            outputscale_constraint=(5,6.))
+
+        self.assertTrue(isinstance(gp.likelihood,gpytorch.likelihoods.Likelihood))
+        self.assertTrue(isinstance(gp.mean_module,gpytorch.means.Mean))
+        self.assertTrue(isinstance(gp.covar_module,gpytorch.kernels.Kernel))
+
+    def test_save_load(self):
+        train_input = np.linspace(0,1,101)
+        train_target = np.sin(2*np.pi*train_input) + np.random.randn(len(train_input))*0.2
+        gp = gps.MaternKernelGP(train_input,
+                            train_target,
+                            likelihood_prior=(1,0.5),
+                            likelihood_noise_constraint=(1e-3,1e4),
+                            lengthscale_prior=(2,1),
+                            lengthscale_constraint=(2,4),
+                            outputscale_constraint=(5.,6.))
+        save_file = tempfile.NamedTemporaryFile(suffix='.pth').name
+        gp.save(save_file)
+
+        loaded = gps.MaternKernelGP.load(save_file,train_input,train_target)
+
+        self.assertEqual(gp.construction_parameters,loaded.construction_parameters)
+        self.assertEqual(gp.likelihood.noise_covar.noise,loaded.likelihood.noise_covar.noise)
+        self.assertEqual(gp.mean_module.constant,loaded.mean_module.constant)
+        self.assertEqual(gp.covar_module.base_kernel.lengthscale,loaded.covar_module.base_kernel.lengthscale)
+        self.assertEqual(gp.covar_module.outputscale,loaded.covar_module.outputscale)
+
+
 if __name__ == '__main__':
     unittest.main()
