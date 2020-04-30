@@ -167,8 +167,14 @@ class CustomGP(gpytorch.models.ExactGP):
             model = CustomGP(train_x,train_y,likelihood,mean_module,covar_module)
 
             state_dict = torch.load(load_path)['state_dict']
-
-        model.load_state_dict(state_dict)
+        try:
+            model.load_state_dict(state_dict)
+        except RuntimeError as e:
+            raise RuntimeError(('The structure of the saved model does not match '
+                            'with the one currently implemented. Try loading it '
+                            'by specifying its type, or with an older version '
+                            'of the code.\n'
+                            'Original error:\n') + str(e))
         return model
 
     def optimize_hyperparameters(self,epochs,optimizer_function=None,
@@ -211,12 +217,31 @@ class CustomGP(gpytorch.models.ExactGP):
         kwargs = {k:ensure_tensor(v) for k,v in kwargs.items()}
         return super(CustomGP,self).__call__(*args,**kwargs)
 
+    def empty_data(self):
+        if len(self.train_x.shape) == 1:
+            inputs_shape = 0
+        else:
+            inputs_shape = (0,self.train_x.shape[1])
+        self.set_train_data(
+                inputs=torch.empty(inputs_shape),
+                targets = torch.empty(0)
+            )
+        return self
+    def set_data(self,x,y):
+        self.set_train_data(
+            inputs=x,
+            targets=y
+        )
+        return self
+    def append_data(self,new_x,new_y):
+        return self.get_fantasy_model(new_x, new_y)
+
 
 class MaternKernelGP(CustomGP):
     def __init__(self,train_x,train_y,likelihood_prior=None,
                 likelihood_noise_constraint=(1e-3,1e4),
                 lengthscale_prior=(1,1),lengthscale_constraint=None,
-                outputscale_constraint=(1e-3,1e4)):
+                outputscale_prior=(1,1),outputscale_constraint=(1e-3,1e4)):
         """
             Parameters:
                 train_x : np.ndarray/torch.Tensor
@@ -242,6 +267,10 @@ class MaternKernelGP(CustomGP):
                     If a float, the lengthscale is constrained to be greater
                     than max(0,lengthscale_constraint)
                     If None, the lengthscale is contrained to be positive.
+                outputscale_prior: tuple / None
+                    If None, the outputscale has no prior
+                    If tuple of size 2, the outputscale has NormalPrior
+                    initialized with the tuple
                 outputscale_constraint: float/tuple/None
                     Same, for the outputscale
         """
@@ -250,6 +279,7 @@ class MaternKernelGP(CustomGP):
             'likelihood_noise_constraint' : likelihood_noise_constraint,
             'lengthscale_prior' : lengthscale_prior,
             'lengthscale_constraint': lengthscale_constraint,
+            'outputscale_prior': outputscale_prior,
             'outputscale_constraint': outputscale_constraint
         }
 
@@ -258,6 +288,8 @@ class MaternKernelGP(CustomGP):
         if lengthscale_prior is not None:
             lengthscale_prior = gpytorch.priors.NormalPrior(*lengthscale_prior)
         lengthscale_constraint = get_bound_constraint(lengthscale_constraint)
+            if outputscale_prior is not None:
+                outputscale_prior = gpytorch.priors.NormalPrior(*outputscale_prior)
         outputscale_constraint = get_bound_constraint(outputscale_constraint)
         ard_num_dims = None if len(train_x.shape) == 1 else train_x.shape[1]
         covar_module = gpytorch.kernels.ScaleKernel(
@@ -267,10 +299,13 @@ class MaternKernelGP(CustomGP):
                 lengthscale_prior = lengthscale_prior,
                 lengthscale_constraint = lengthscale_constraint
             ),
+            outputscale_prior = outputscale_prior,
             outputscale_constraint = outputscale_constraint
         )
         if lengthscale_prior is not None:
             covar_module.base_kernel.lengthscale = lengthscale_prior.mean
+        if outputscale_prior is not None:
+            covar_module.outputscale = outputscale_prior.mean
 
         super(MaternKernelGP,self).__init__(train_x,train_y,likelihood_prior,
                                             mean_module,covar_module,
