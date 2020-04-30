@@ -25,6 +25,10 @@ def get_bound_constraint(bounds):
     else:
         lbound = max(0.,float(bounds[0]))
         ubound = max(0.,float(bounds[1]))
+        if ubound - lbound < 1e-4:
+            warnings.warn(('The Interval constraint has bounds that are very close.'
+                            'Make sure that this is the intended behaviour.\n'
+                            'Interval : [{:.3f} ; {:.3f}]'.format(lbound,ubound)))
         return gpytorch.constraints.Interval(lbound,ubound)
 
 class CustomGP(gpytorch.models.ExactGP):

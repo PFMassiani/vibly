@@ -14,12 +14,12 @@ class MeasureEstimation:
 
     def __init__(self, state_dim, action_dim, grids, seed=None):
 
-        self.prior_kernel = None
-        self.prior = None
-        self.prior_mean = None
+        self.prior_kernel = None # TODO:REMOVE
+        self.prior = None # TODO:REMOVE
+        self.prior_mean = None # TODO:REMOVE
 
-        self.gp = None
-        self.kernel = None
+        self.gp = None # TODO:CHANGE
+        self.kernel = None # TODO:REMOVE
 
         np.random.seed(seed)
         self.state_dim = state_dim
@@ -41,10 +41,10 @@ class MeasureEstimation:
     # The failure value is chosen such that at the point there is only some probability left that the point is viable
     @property
     def failure_value(self):
-        return - 2*np.sqrt(self.gp.likelihood.variance)
+        return - 2*np.sqrt(self.gp.likelihood.variance) # TODO:CHANGE
 
     def init_default_kernel(self, ranges=1):
-
+        # TODO:CHANGE
         # Initialize GP with a general kernel and constrain hyperparameter
         # TODO Hyperpriors and kernel choice
 
@@ -70,6 +70,7 @@ class MeasureEstimation:
         # or np.meshgrid(np.linspace(0,3,3), np.linspace(0,3,3), np.linspace(0,3,4))
         # The Q_M,Q_V and Q_feas data needs to be in a corresponding n**d grid
 
+
         ranges = list()
         for i in range(self.input_dim):
             ranges.append(AS_grid[i].max() - AS_grid[i].min())
@@ -93,20 +94,20 @@ class MeasureEstimation:
         X_train = AS[idx, :]
         y_train = Q[idx].reshape(-1, 1)
 
-        self.prior_kernel = self.init_default_kernel(ranges=ranges)
+        self.prior_kernel = self.init_default_kernel(ranges=ranges) # TODO:CHANGE
 
         gp_prior = GPy.models.GPRegression(X=X_train,
                                            Y=y_train,
                                            kernel=self.prior_kernel,
-                                           noise_var=0.001)
+                                           noise_var=0.001) # TODO:CHANGE
 
-        gp_prior.likelihood.variance.constrain_bounded(1e-7, 1e-3)
-        gp_prior.optimize_restarts(num_restarts=3)  # This is expensive
+        gp_prior.likelihood.variance.constrain_bounded(1e-7, 1e-3) # TODO:CHANGE
+        gp_prior.optimize_restarts(num_restarts=3) # TODO:CHANGE
 
         print(gp_prior)
         print(gp_prior.kern1.lengthscale)
 
-        if save:
+        if save: # TODO:CHANGE
             file = Path(save)
             file.parent.mkdir(parents=True, exist_ok=True)
             gps = {'gp_prior': gp_prior.param_array}
@@ -117,7 +118,7 @@ class MeasureEstimation:
 
 
     def init_estimator(self, X, y, load='./model/prior.npy'):
-
+         # TODO:CHANGE EVERYTHING
         self.prior_kernel = self.init_default_kernel()
         gp_prior = GPy.models.GPRegression(X=X,
                                            Y=y,
@@ -150,7 +151,7 @@ class MeasureEstimation:
 
 
     def set_data(self, X=None, Y=None):
-
+         # TODO:CHANGE
         if (X is None) or (Y is None):
             self.set_data_empty()
 
@@ -162,6 +163,7 @@ class MeasureEstimation:
 
     # Utility function to empty out data set
     def set_data_empty(self):
+         # TODO:CHANGE
         # GPy fails with empty dataset. So put in a data point far removed from everything
         X = np.ones((1,self.input_dim))*-1000
         y = np.zeros((1,1))
