@@ -1,8 +1,11 @@
 import gpytorch
 import torch
 from numpy import ndarray
-from numbers import Number
 import itertools
+from numbers import Number
+
+def class_from_name(name):
+    return globals().get(name)
 
 def ensure_tensor(x):
     if isinstance(x,torch.Tensor):
@@ -25,6 +28,9 @@ def get_bound_constraint(bounds):
         return gpytorch.constraints.Interval(lbound,ubound)
 
 class CustomGP(gpytorch.models.ExactGP):
+    CONSTRUCTION_INFORMATION_SAVE_KEY = "__construction_information__"
+    TYPENAME_SAVE_KEY = "__typename__"
+
     def __init__(self,train_x,train_y,likelihood=None,mean_module=None,
                 covar_module=None,likelihood_noise_constraint=(1e-3,1e4)):
         """
@@ -37,7 +43,7 @@ class CustomGP(gpytorch.models.ExactGP):
                     If None, the likelihood is initialized as a default
                     GaussianLikelihood.
                     If a tuple, the likelihood is initialized as a GaussianLikelihood
-                    with prior NormalPrior(likelihood[0],likelihood[1])
+                    with prior NormalPrior(*likelihood)
                 mean_module : gpytorch.means.Mean / None
                     If None, the mean_module is initialized as a ConstantMean.
                 covar_module : gpytorch.kernel.Kernel / None
@@ -80,30 +86,84 @@ class CustomGP(gpytorch.models.ExactGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    def save(self,save_path,additional_save_information=None,
-            additional_save_key='additional_dict'):
+    def save(self,save_path,additional_save_information=None):
         """
             Saves the model with .pth extension. Note that you will need to
             specify the structure of the uninitialized model to load it.
+            The best practice is to store the construction parameters in
+            additional_save_information.
+            Note that you will NOT be able to load a saved model in the
+            following cases:
+                * The method for constructing it has changed since last saving
+                * Some structure has been added to the model after construction
+                    To add structure to a model, you should declare a subclass
+                    of CustomGP.
         """
         if not save_path.endswith('.pth'):
             save_path += '.pth'
         save_dict = {'state_dict':self.state_dict()}
+        # The user may want to save additional information with the weights.
+        # It is actually very useful in order to be able to reconstruct the
+        # object when loading it : PyTorch does not save the structure of the
+        # model (due to the shortcoming of pickles when serializing classes),
+        # so we need to have the name of the constructor and the parameters it
+        # needs to reconstruct it.
         if additional_save_information is not None:
-            save_dict[additional_save_key] = additional_save_information
+            save_dict[CustomGP.CONSTRUCTION_INFORMATION_SAVE_KEY] = additional_save_information
+        save_dict[CustomGP.TYPENAME_SAVE_KEY] = type(self).__name__
 
         torch.save(save_dict,save_path)
+        return save_path
 
     @staticmethod
-    def load(load_path,train_x,train_y,likelihood,mean_module,covar_module,
-                model = None):
-        if model is None:
+    def load(load_path,train_x,train_y,likelihood=None,mean_module=None,
+            covar_module=None):
+        """
+            If all of the optional parameters are specified, this method will
+            attempt to load a CustomGP from load_path. Note that the saved model
+            needs to have the exact same structure as the one you specify.
+            If any of the optional parameters is None, this method will infer
+            the type of CustomGP saved at load_path, and will attempt to
+            initialize it with the construction information saved in the file.
+            Remarks:
+                * If the signature of the constructor of the saved GP has changed
+                    since it has been saved, then this method will fail.
+                * If the code that defines the saved GP is not in the file
+                    gaussian_processes.py, then this method will fail.
+                * If structure has been added to the saved model after its
+                    construction (e.g., a prior has been added), then this
+                    method will fail.
+                    The correct way to add structure to a model is to create a
+                    subclass of CustomGP
+            Parameters:
+                load_path : str : the path of the saved model
+                train_x : np.ndarray / torch.Tensor
+                train_y : np.ndarray / torch.Tensor
+                likelihood : gpytorch.likelihoods.Likelihood : unused if the
+                                                    saved model is not a CustomGP
+                mean_module : gpytorch.means.Mean : unused if the saved model
+                                                    is not a CustomGP
+                covar_module : gpytorch.kernels.Kernel : unused if the saved
+                                                    model is not a CustomGP
+        """
+        save_dict = torch.load(load_path)
+        classname = save_dict[CustomGP.TYPENAME_SAVE_KEY]
+        if classname != 'CustomGP' or (likelihood is None or
+                                        mean_module is None or
+                                        covar_module is None):
+            constructor = class_from_name(classname)
+            construction_parameters = save_dict[CustomGP.CONSTRUCTION_INFORMATION_SAVE_KEY]
+            model = constructor(train_x=train_x,train_y=train_y,**construction_parameters)
+
+            state_dict = save_dict['state_dict']
+        else:
             train_x = ensure_tensor(train_x)
             train_y = ensure_tensor(train_y)
 
             model = CustomGP(train_x,train_y,likelihood,mean_module,covar_module)
 
-        state_dict = torch.load(load_path)['state_dict']
+            state_dict = torch.load(load_path)['state_dict']
+
         model.load_state_dict(state_dict)
         return model
 
@@ -213,14 +273,4 @@ class MaternKernelGP(CustomGP):
                                             likelihood_noise_constraint)
 
     def save(self,save_path):
-        super(MaternKernelGP,self).save(save_path,self.construction_parameters,
-                                        'construction_parameters')
-
-    @staticmethod
-    def load(load_path,train_x,train_y):
-        save_dict = torch.load(load_path)
-        state_dict = save_dict['state_dict']
-        construction_parameters = save_dict['construction_parameters']
-        model = MaternKernelGP(train_x, train_y,**construction_parameters)
-        model.load_state_dict(state_dict)
-        return model
+        return super(MaternKernelGP,self).save(save_path,self.construction_parameters)
