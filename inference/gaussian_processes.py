@@ -288,10 +288,13 @@ class MaternKernelGP(CustomGP):
         if lengthscale_prior is not None:
             lengthscale_prior = gpytorch.priors.NormalPrior(*lengthscale_prior)
         lengthscale_constraint = get_bound_constraint(lengthscale_constraint)
-            if outputscale_prior is not None:
-                outputscale_prior = gpytorch.priors.NormalPrior(*outputscale_prior)
+
+        if outputscale_prior is not None:
+            outputscale_prior = gpytorch.priors.NormalPrior(*outputscale_prior)
         outputscale_constraint = get_bound_constraint(outputscale_constraint)
+
         ard_num_dims = None if len(train_x.shape) == 1 else train_x.shape[1]
+
         covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.MaternKernel(
                 nu = 5/2,
@@ -302,6 +305,7 @@ class MaternKernelGP(CustomGP):
             outputscale_prior = outputscale_prior,
             outputscale_constraint = outputscale_constraint
         )
+        
         if lengthscale_prior is not None:
             covar_module.base_kernel.lengthscale = lengthscale_prior.mean
         if outputscale_prior is not None:
